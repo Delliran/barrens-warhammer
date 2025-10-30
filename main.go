@@ -128,6 +128,7 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	var lastUpdates []tgbotapi.Update
+	var lastReplies []string
 	for update := range updates {
 		if update.Message == nil {
 			continue
@@ -140,7 +141,16 @@ func main() {
 
 		lastUpdates = writeAndRotate(lastUpdates, update, config.StoreUpdates)
 
-		handleMessage(bot, update.Message, config, lastUpdates)
+		var replyContext string
+		for i, u := range lastReplies {
+			replyContext = replyContext + fmt.Sprintf("ответ %s: %s ;", strconv.Itoa(i), u)
+		}
+
+		reply, err := handleMessage(bot, update.Message, config, lastUpdates, replyContext)
+		if err != nil {
+			continue
+		}
+		lastReplies = writeAndRotate(lastReplies, reply, config.StoreUpdates)
 	}
 }
 
@@ -154,20 +164,22 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, replyTo int) {
 }
 
 func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
-	config *Config, lastUpdates []tgbotapi.Update) {
+	config *Config, lastUpdates []tgbotapi.Update, lastResponses string) (reply string, err error) {
 	if len(message.Text) < 5 {
+		err = fmt.Errorf("Too short text")
 		return
 	}
 
 	isMentioned := strings.Contains(strings.ToLower(message.Text), "@"+strings.ToLower(bot.Self.UserName))
 
 	if !isMentioned && rand.Float64() > config.TriggerProbability {
+		err = fmt.Errorf("Conditions not met")
 		return
 	}
 
 	var chatContext string
 	for i, u := range lastUpdates {
-		chatContext = chatContext + fmt.Sprintf("сообщение %s: %s . ", strconv.Itoa(i), u.Message.Text)
+		chatContext = chatContext + fmt.Sprintf("сообщение от пользователя %s номер %s: %s ; ", u.Message.From.UserName, strconv.Itoa(i), u.Message.Text)
 	}
 
 	processedText := message.Text
@@ -184,8 +196,8 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
 
 	promptTemplate := warhammerPrompts[r.Intn(len(warhammerPrompts))]
 
-	prompt := fmt.Sprintf("По возможности использую историю сообщений - %s %s %s",
-		chatContext, promptTemplate, processedText)
+	prompt := fmt.Sprintf("По возможности использую историю сообщений чата - %s и твоих ответов в чате %s. %s %s",
+		chatContext, lastResponses, promptTemplate, processedText)
 
 	response, err := generateDeepSeekResponse(prompt, config)
 	if err != nil {
@@ -199,6 +211,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
 	}
 
 	sendMessage(bot, message.Chat.ID, response, message.MessageID)
+	return response, nil
 }
 
 func generateDeepSeekResponse(prompt string, config *Config) (string, error) {
