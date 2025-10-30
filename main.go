@@ -151,7 +151,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config *Conf
 		return
 	}
 
-	if rand.Float64() < config.TriggerProbability {
+	if rand.Float64() > config.TriggerProbability {
 		return
 	}
 
