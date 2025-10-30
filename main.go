@@ -151,12 +151,24 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config *Conf
 		return
 	}
 
-	if rand.Float64() > config.TriggerProbability {
+	isMentioned := strings.Contains(strings.ToLower(message.Text), "@"+strings.ToLower(bot.Self.UserName))
+
+	if !isMentioned && rand.Float64() > config.TriggerProbability {
 		return
 	}
 
+	processedText := message.Text
+	if isMentioned {
+		processedText = strings.ReplaceAll(strings.ToLower(processedText), "@"+strings.ToLower(bot.Self.UserName), "")
+		processedText = strings.TrimSpace(processedText)
+
+		if len(processedText) < 3 {
+			processedText = "Ты жалкий бот зачем ты существуешь"
+		}
+	}
+
 	promptTemplate := warhammerPrompts[rand.Intn(len(warhammerPrompts))]
-	prompt := fmt.Sprintf(promptTemplate, message.Text)
+	prompt := fmt.Sprintf(promptTemplate, processedText)
 
 	response, err := generateDeepSeekResponse(prompt, config)
 	if err != nil {
