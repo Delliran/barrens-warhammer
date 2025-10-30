@@ -208,7 +208,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
 
 	promptTemplate := warhammerPrompts[r.Intn(len(warhammerPrompts))]
 
-	prompt := fmt.Sprintf("По возможности использую историю сообщений чата - %s и твоих ответов в чате - %s. %s %s",
+	prompt := fmt.Sprintf("По возможности использую историю сообщений чата - %s. И твоих ответов в чате - %s. То как надо отвечать - %s Само сообщение на которое нужно ответить - %s",
 		chatContext, lastResponses, promptTemplate, processedText)
 
 	log.Println("Request:", prompt)
