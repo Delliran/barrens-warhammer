@@ -7,6 +7,8 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +25,7 @@ type Config struct {
 	DeepSeekModel      string  `mapstructure:"deepseek_model"`
 	MaxTokens          int     `mapstructure:"max_tokens"`
 	Temperature        float64 `mapstructure:"temperature"`
+	StoreUpdates       int     `mapstructure:"store_updates"`
 }
 
 type deepSeekMessage struct {
@@ -52,7 +55,6 @@ var warhammerPrompts = []string{
 	"Ответь как мудрый инквизитор из вселенной Warhammer 40k на это сообщение но не больше 50 слов в ответе: \"%s\". Ответ должен быть кратким, мрачным и содержать отсылки к варпу, Императору или ксеносам.",
 	"Ответь как орк из Warhammer 40k на это но не больше 50 слов в ответе: \"%s\". Используй оркский сленг - WAAAGH!, зубы, драка и т.д.",
 	"Ответь как космодесантник из Warhammer 40k (Адептус Астартес) на это сообщение но не больше 50 слов в ответе: \"%s\". Будь суровым и преданным Императору.",
-	"Ответь как хаос-культист из Warhammer 40k на это но не больше 50 слов в ответе: \"%s\". Упомяни темных богов, хаос и предательство.",
 	"Ответь как представитель Имперской администрации из Warhammer 40k на но не больше 50 слов в ответе: \"%s\". Будь бюрократичным и подозрительным.",
 	"Ответь как техножрец Адептус Механикус на но не больше 50 слов в ответе: \"%s\". Упомяни Омниссию, машины и древние технологии.",
 	"Ответь как эльдар из Warhammer 40k на но не больше 50 слов в ответе: \"%s\". Будь загадочным и надменным, упомяни судьбу и древние пророчества.",
@@ -71,6 +73,7 @@ var warhammerPrompts = []string{
 	"Ответь как изнеженный и декадентский повелитель командования Та'у на но не больше 50 слов в ответе: \"%s\". Говори о 'Великом Благе' с непоколебимым, почти наивным оптимизмом, прерываемым угрозой орудий союзных крии.",
 	"Ответь как древний и могущественный Примарх Робаут Жильман, Прокуратор Империума, на но не больше 50 слов в ответе: \"%s\". Вырази глубокое разочарование, административную усталость и желание, чтобы все просто следовали Codex Astartes.",
 	"Ответь как безумный техноеретик из Тёмных Механикус на но не больше 50 слов в ответе: \"%s\". Восхваляй Омниссию Всемогущего (Машины), запретные технологии и предложи 'улучшить' исходное сообщение с помощью даэмонических скриптов.",
+	"Ответь как хаос-культист из Warhammer 40k на это но не больше 50 слов в ответе: \"%s\". Упомяни темных богов, хаос и предательство.",
 }
 
 func loadConfig() (*Config, error) {
@@ -84,6 +87,7 @@ func loadConfig() (*Config, error) {
 	viper.SetDefault("max_tokens", 150)
 	viper.SetDefault("temperature", 0.8)
 	viper.SetDefault("bot_debug", true)
+	viper.SetDefault("store_updates", 20)
 
 	viper.ReadInConfig()
 
@@ -123,6 +127,7 @@ func main() {
 
 	updates := bot.GetUpdatesChan(u)
 
+	var lastUpdates []tgbotapi.Update
 	for update := range updates {
 		if update.Message == nil {
 			continue
@@ -133,7 +138,9 @@ func main() {
 			continue
 		}
 
-		go handleMessage(bot, update.Message, config)
+		lastUpdates = writeAndRotate(lastUpdates, update, config.StoreUpdates)
+
+		handleMessage(bot, update.Message, config, lastUpdates)
 	}
 }
 
@@ -146,7 +153,8 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, replyTo int) {
 	}
 }
 
-func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config *Config) {
+func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
+	config *Config, lastUpdates []tgbotapi.Update) {
 	if len(message.Text) < 5 {
 		return
 	}
@@ -155,6 +163,11 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config *Conf
 
 	if !isMentioned && rand.Float64() > config.TriggerProbability {
 		return
+	}
+
+	var chatContext string
+	for i, u := range lastUpdates {
+		chatContext = chatContext + fmt.Sprintf("сообщение %s: %s . ", strconv.Itoa(i), u.Message.Text)
 	}
 
 	processedText := message.Text
@@ -166,9 +179,13 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config *Conf
 			processedText = "Ты жалкий бот зачем ты существуешь"
 		}
 	}
+	now := time.Now().UTC().Truncate(time.Hour)
+	r := rand.New(rand.NewSource(now.Unix()))
 
-	promptTemplate := warhammerPrompts[rand.Intn(len(warhammerPrompts))]
-	prompt := fmt.Sprintf(promptTemplate, processedText)
+	promptTemplate := warhammerPrompts[r.Intn(len(warhammerPrompts))]
+
+	prompt := fmt.Sprintf("По возможности использую историю сообщений - %s %s %s",
+		chatContext, promptTemplate, processedText)
 
 	response, err := generateDeepSeekResponse(prompt, config)
 	if err != nil {
@@ -231,4 +248,25 @@ func generateDeepSeekResponse(prompt string, config *Config) (string, error) {
 	}
 
 	return strings.TrimSpace(deepSeekResp.Choices[0].Message.Content), nil
+}
+
+func writeAndRotate[T any](s []T, v T, l int) []T {
+	if len(s) < l {
+		s = append(s, v)
+	} else {
+		rotate(s, 1)
+		s[(len(s) - 1)] = v
+	}
+	return s
+}
+
+func rotate[T any](s []T, k int) {
+	n := len(s)
+	if n == 0 {
+		return
+	}
+	k = k % n
+	slices.Reverse(s[:k])
+	slices.Reverse(s[k:])
+	slices.Reverse(s)
 }
