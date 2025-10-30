@@ -172,7 +172,15 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
 
 	isMentioned := strings.Contains(strings.ToLower(message.Text), "@"+strings.ToLower(bot.Self.UserName))
 
-	if !isMentioned && rand.Float64() > config.TriggerProbability && message.ReplyToMessage.From.ID != bot.Self.ID {
+	var replyTo bool
+
+	if message.ReplyToMessage != nil &&
+		message.ReplyToMessage.From != nil &&
+		message.ReplyToMessage.From.ID == bot.Self.ID {
+		replyTo = true
+	}
+
+	if !isMentioned && rand.Float64() > config.TriggerProbability && !replyTo {
 		err = fmt.Errorf("Conditions not met")
 		return
 	}
