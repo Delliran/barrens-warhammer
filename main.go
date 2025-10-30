@@ -198,14 +198,19 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
 		if len(processedText) < 3 {
 			processedText = "Ты жалкий бот зачем ты существуешь"
 		}
+		if message.ReplyToMessage != nil {
+			processedText = processedText + message.ReplyToMessage.Text
+		}
 	}
-	now := time.Now().UTC().Truncate(time.Hour)
+	now := time.Now().UTC().Truncate(time.Hour * 24)
 	r := rand.New(rand.NewSource(now.Unix()))
 
 	promptTemplate := warhammerPrompts[r.Intn(len(warhammerPrompts))]
 
 	prompt := fmt.Sprintf("По возможности использую историю сообщений чата - %s и твоих ответов в чате %s. %s %s",
 		chatContext, lastResponses, promptTemplate, processedText)
+
+	log.Println("Request:", prompt)
 
 	response, err := generateDeepSeekResponse(prompt, config)
 	if err != nil {
