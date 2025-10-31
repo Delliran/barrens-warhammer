@@ -64,7 +64,7 @@ func loadConfig() (*Config, error) {
 	viper.SetDefault("temperature", 0.8)
 	viper.SetDefault("bot_debug", true)
 	viper.SetDefault("store_updates", 20)
-	viper.SetDefault("prompt", []string{
+	viper.SetDefault("prompts", []string{
 		"Ответь как мудрый инквизитор из вселенной Warhammer 40k на это сообщение но не больше 50 слов в ответе. Ответ должен быть кратким, мрачным и содержать отсылки к варпу, Императору или ксеносам.",
 		"Ответь как орк из Warhammer 40k на это но не больше 50 слов в ответе. Используй оркский сленг - WAAAGH!, зубы, драка и т.д.",
 		"Ответь как космодесантник из Warhammer 40k (Адептус Астартес) на это сообщение но не больше 50 слов в ответе. Будь суровым и преданным Императору.",
@@ -213,7 +213,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
 	promptTemplate := config.Prompts[r.Intn(len(config.Prompts))]
 
 	prompt := fmt.Sprintf("По возможности используя историю сообщений чата - %s."+
-		"И твоих ответов в чате - %s."+
+		"И твоих ответов в чате(старайся быть оригинальным и не повторяться, историят твоих ответов для понимания контекста) - %s."+
 		"То как надо отвечать - %s."+
 		"Само сообщение на которое нужно ответить - %s",
 		chatContext, lastResponses, promptTemplate, processedText)
